@@ -314,7 +314,7 @@ function init3D(){
   ren.shadowMap.enabled=true;ren.shadowMap.type=THREE.PCFSoftShadowMap;
   box.appendChild(ren.domElement);const msg=$("v3dmsg");if(msg)msg.remove();
   const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(34,w/h,1,1000);cam.position.set(58,72,78);
-  const ctl=new THREE.OrbitControls(cam,ren.domElement);ctl.target.set(0,12,0);ctl.enableDamping=true;ctl.minDistance=45;ctl.maxDistance=220;ctl.maxPolarAngle=Math.PI*.49;ctl.enablePan=false;
+  const ctl=new THREE.OrbitControls(cam,ren.domElement);ctl.target.set(0,22,0);ctl.enableDamping=true;ctl.maxPolarAngle=Math.PI*.49;ctl.enablePan=false;
   scene.add(new THREE.HemisphereLight(0xffffff,0x5d6450,.75));
   const dl=new THREE.DirectionalLight(0xffffff,.75);dl.position.set(35,90,45);dl.castShadow=true;dl.shadow.mapSize.set(1024,1024);
   Object.assign(dl.shadow.camera,{left:-60,right:60,top:60,bottom:-60,near:10,far:200});scene.add(dl);
@@ -326,7 +326,10 @@ function init3D(){
     ptr.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);ray.setFromCamera(ptr,cam);
     const hit=ray.intersectObjects(g.children,true).find(i=>i.object.userData.nome);if(hit)toast(hit.object.userData.nome)});
   R={ren,scene,cam,ctl,g,box};
-  new ResizeObserver(()=>{const W=box.clientWidth,H=box.clientHeight;if(!W||!H)return;ren.setSize(W,H);cam.aspect=W/H;cam.updateProjectionMatrix()}).observe(box);
+  const inquadra=()=>{const v=cam.fov*Math.PI/180,hf=2*Math.atan(Math.tan(v/2)*cam.aspect),d=40/Math.sin(Math.min(v,hf)/2);
+    const dir=new THREE.Vector3(58,52,78).normalize();cam.position.copy(dir.multiplyScalar(d)).add(ctl.target);ctl.maxDistance=d*1.8;ctl.minDistance=d*.45};
+  inquadra();R.inquadra=inquadra;
+  new ResizeObserver(()=>{const W=box.clientWidth,H=box.clientHeight;if(!W||!H)return;ren.setSize(W,H);cam.aspect=W/H;cam.updateProjectionMatrix();inquadra()}).observe(box);
   (function loop(){requestAnimationFrame(loop);ctl.update();ren.render(scene,cam)})();
   return true;
 }
@@ -341,36 +344,54 @@ function rbox(w,h,d,r){ // parallelepipedo con spigoli arrotondati
 function mesh(geo,col,o={}){const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:col,roughness:o.rough??.85,metalness:0,transparent:!!o.op,opacity:o.op??1,side:o.side??THREE.FrontSide,depthWrite:o.op?false:true}));
   m.castShadow=!o.op;m.receiveShadow=true;return m}
 function at(m,x,y,z){m.position.set(x,y,z);return m}
+let TEX=null;
+function texTela(){ // tela cerata "New Taupe Green" con la trama a rombi del Base Camp
+  if(TEX)return TEX;const c=document.createElement("canvas");c.width=c.height=64;const x=c.getContext("2d");
+  x.fillStyle="#3b3a2b";x.fillRect(0,0,64,64);x.fillStyle="rgba(120,118,88,.35)";
+  for(let i=0;i<4;i++)for(let j=0;j<4;j++){const cx=i*16+(j%2?8:0),cy=j*16;x.beginPath();x.moveTo(cx,cy+2);x.lineTo(cx+3,cy+5);x.lineTo(cx,cy+8);x.lineTo(cx-3,cy+5);x.closePath();x.fill()}
+  TEX=new THREE.CanvasTexture(c);TEX.wrapS=TEX.wrapT=THREE.RepeatWrapping;TEX.repeat.set(.16,.16);return TEX}
 function costruisciBorsa(g,B){
-  const TELA=0x77765c,NERO=0x23251f,ZIP=0x111210,t=1.1,L=BAG.L,W=BAG.W,H=BAG.H;
-  // fondo in nylon balistico nero + pareti in tela cerata (vasca aperta)
-  g.add(at(mesh(rbox(L,3.2,W,1.4),NERO),0,1.6,0));
-  g.add(at(mesh(rbox(L,H-2.6,t,.5),TELA),0,1.6+(H-2.6)/2,-W/2+t/2));
-  g.add(at(mesh(rbox(L,H-2.6,t,.5),TELA),0,1.6+(H-2.6)/2,W/2-t/2));
-  g.add(at(mesh(rbox(t,H-2.6,W,.5),TELA),-L/2+t/2,1.6+(H-2.6)/2,0));
-  g.add(at(mesh(rbox(t,H-2.6,W,.5),TELA),L/2-t/2,1.6+(H-2.6)/2,0));
-  // bordo con cerniera
-  [[-W/2+.2,0],[W/2-.2,0]].forEach(([z])=>g.add(at(mesh(new THREE.BoxGeometry(L-2,.5,.6),ZIP),0,H-.9,z)));
-  [-L/2+.2,L/2-.2].forEach(x=>g.add(at(mesh(new THREE.BoxGeometry(.6,.5,W-2),ZIP),x,H-.9,0)));
+  const NERO=0x1d1d19,ZIP=0x0e0e0c,FETTUCCIA=0x2c2b21,t=1.2,L=BAG.L,W=BAG.W,H=BAG.H,r=3.2;
+  const tela=(geo,o={})=>{const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0xffffff,map:texTela(),roughness:.62,metalness:.05,side:o.side??THREE.FrontSide}));m.castShadow=true;m.receiveShadow=true;return m};
+  // fondo in nylon balistico nero, che risale sugli spigoli
+  g.add(at(mesh(rbox(L,4.2,W,2.2),NERO,{rough:.95}),0,2.1,0));
+  // pareti in tela cerata, angoli arrotondati (vasca aperta: il coperchio è sollevato)
+  g.add(at(tela(rbox(L-2*r,H-2.5,t,.5)),0,1.6+(H-2.5)/2,-W/2+t/2));
+  g.add(at(tela(rbox(L-2*r,H-2.5,t,.5)),0,1.6+(H-2.5)/2,W/2-t/2));
+  g.add(at(tela(rbox(t,H-2.5,W-2*r,.5)),-L/2+t/2,1.6+(H-2.5)/2,0));
+  g.add(at(tela(rbox(t,H-2.5,W-2*r,.5)),L/2-t/2,1.6+(H-2.5)/2,0));
+  [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([sx,sz])=>{const c=tela(new THREE.CylinderGeometry(r,r,H-2.5,16,1,true,0,Math.PI*2),{side:THREE.DoubleSide});c.position.set(sx*(L/2-r),1.6+(H-2.5)/2,sz*(W/2-r));g.add(c)});
+  // interno nero
+  g.add(at(mesh(new THREE.BoxGeometry(L-3,.4,W-3),0x16160f),0,3.3,0));
+  // cerniera sul bordo a forma di D
+  const bordo=new THREE.Shape();const bx=L/2-.6,bz=W/2-.6,br=r;
+  bordo.moveTo(-bx+br,-bz);bordo.lineTo(bx-br,-bz);bordo.quadraticCurveTo(bx,-bz,bx,-bz+br);bordo.lineTo(bx,bz-br);bordo.quadraticCurveTo(bx,bz,bx-br,bz);
+  bordo.lineTo(-bx+br,bz);bordo.quadraticCurveTo(-bx,bz,-bx,bz-br);bordo.lineTo(-bx,-bz+br);bordo.quadraticCurveTo(-bx,-bz,-bx+br,-bz);
+  const zipLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints(bordo.getPoints(40).map(p=>new THREE.Vector3(p.x,H-.9,p.y))),new THREE.LineBasicMaterial({color:ZIP}));g.add(zipLine);
+  // fettucce di compressione sul fronte e sul retro + fettuccia orizzontale (daisy chain)
+  [-1,1].forEach(sz=>{[-15,15].forEach(x=>g.add(at(mesh(new THREE.BoxGeometry(2.5,H-3,.35),FETTUCCIA),x,1.5+(H-3)/2,sz*(W/2+.15))));
+    g.add(at(mesh(new THREE.BoxGeometry(L-2*r,2.5,.3),FETTUCCIA),0,12,sz*(W/2+.2)))});
+  // maniglie laterali (sui lati corti) e maniglie lunghe sul fronte e sul retro
+  [-1,1].forEach(s=>{const m=mesh(new THREE.TorusGeometry(4.5,.55,8,20,Math.PI),FETTUCCIA);m.rotation.y=Math.PI/2;m.position.set(s*(L/2+.3),H-8,0);m.scale.set(1,.55,1);g.add(m)});
+  [-1,1].forEach(s=>{const m=mesh(new THREE.TorusGeometry(9,.6,8,24,Math.PI),FETTUCCIA);m.position.set(0,H-4,s*(W/2+.4));m.scale.set(1,.45,1);g.add(m)});
   // divisorio interno
-  const xd=B.A.max[0]+.4;g.add(at(mesh(new THREE.BoxGeometry(.5,H-6,W-2.6),0x3b4a2c),xd,3.2+(H-6)/2,0));
-  // coperchio aperto, incernierato sul lato lungo posteriore
-  const lid=new THREE.Group();lid.position.set(0,H-.6,-W/2);lid.rotation.x=-1.95;g.add(lid);
-  lid.add(at(mesh(rbox(L,1.6,W,.7),TELA),0,.8,W/2));
-  lid.add(at(mesh(rbox(46,3.4,29,1.2),0x6c6b52,{op:.55}),0,2.6,W/2));           // tasca esterna grande
-  lid.add(at(mesh(new THREE.BoxGeometry(44,.25,.5),ZIP),0,4.35,W/2+8));
-  lid.add(at(mesh(rbox(15,1.6,11,.6),0x5f5e48,{op:.6}),15,4.9,W/2-6.5));        // taschino con zip
-  lid.add(at(mesh(new THREE.BoxGeometry(40,.4,25),0x9aa08a,{op:.55}),0,-.25,W/2)); // tasca in rete interna
-  // logo e maniglie
-  lid.add(at(mesh(new THREE.BoxGeometry(9,.2,2.2),0xe8e4d8),-17,1.7,W/2+12));
-  [-W/2-1.2,W/2+1.2].forEach(z=>{const m=mesh(new THREE.TorusGeometry(5.5,.7,8,20,Math.PI),NERO);m.position.set(0,H-6,z);g.add(m)});
-  [[-L/2-1.1,1],[L/2+1.1,-1]].forEach(([x,s])=>{const m=mesh(new THREE.TorusGeometry(4,.6,8,16,Math.PI),NERO);m.rotation.y=Math.PI/2;m.position.set(x,H-7,0);g.add(m)});
-  // porta-borraccia in rete sul lato corto
-  g.add(at(mesh(new THREE.CylinderGeometry(3.6,3.6,14,20,1,true),0x6d7a58,{op:.45,side:THREE.DoubleSide}),L/2+3.8,9,0));
-  // vano PC esterno sotto il fondo, con spallacci
-  g.add(at(mesh(rbox(44,2.4,30,.8),0x2c2f28,{op:.5}),0,-1.4,0));
-  [-8.5,8.5].forEach(z=>g.add(at(mesh(rbox(46,1.6,6,.7),NERO),0,-3.2,z)));
-  // rete interna e vano PC servono come posizioni per gli oggetti: le zone geometriche restano quelle di zoneBoxes
+  const xd=B.A.max[0]+.4;g.add(at(mesh(new THREE.BoxGeometry(.5,H-7,W-3),0x22221a),xd,3.5+(H-7)/2,0));
+  // coperchio aperto (~100°), incernierato sul lato lungo posteriore
+  const lid=new THREE.Group();lid.position.set(0,H-.6,-W/2);lid.rotation.x=-1.72;g.add(lid);
+  lid.add(at(tela(rbox(L,2.2,W,1)),0,1.1,W/2));
+  lid.add(at(mesh(new THREE.BoxGeometry(L-3,.3,W-3),0x16160f),0,-.15,W/2));        // fodera interna
+  lid.add(at(mesh(rbox(46,3.4,29,1.4),0x34332a,{op:.6}),0,3.2,W/2));               // tasca esterna grande
+  lid.add(at(mesh(new THREE.BoxGeometry(44,.3,.5),ZIP),0,4.95,W/2+9));
+  lid.add(at(mesh(rbox(15,1.6,11,.6),0x2f2e25,{op:.6}),15,5.7,W/2-6.5));            // taschino con zip
+  lid.add(at(mesh(new THREE.BoxGeometry(42,.35,27),0x0f0f0c,{op:.55}),0,-.5,W/2));  // tasca in rete interna
+  lid.add(at(mesh(new THREE.BoxGeometry(40,.25,.4),ZIP),0,-.75,W/2+12.5));
+  [-15,15].forEach(x=>lid.add(at(mesh(new THREE.BoxGeometry(2.5,.35,W-1),FETTUCCIA),x,2.35,W/2)));
+  lid.add(at(mesh(new THREE.BoxGeometry(7,.2,1.6),0xd9d5c8),-19,2.4,W/2+13));     // etichetta
+  // porta-borraccia elastico su un lato corto
+  g.add(at(mesh(new THREE.CylinderGeometry(3.8,3.6,13,20,1,true),0x23231c,{op:.85,side:THREE.DoubleSide}),L/2+3.4,8.5,W/2-9));
+  // vano PC esterno sul pannello schiena (sotto) e spallacci
+  g.add(at(mesh(rbox(44,2.4,30,.9),0x24241d),0,-1.4,0));
+  [-8.5,8.5].forEach(z=>g.add(at(mesh(rbox(48,1.6,6.5,.8),NERO),0,-3.1,z)));
   return lid;
 }
 const FORME={vest:[26,18],scarpe:[29,10.5],piccolo:[9,6],pc:[35.6,24.4],doc:[30,21],borr:[7,7]};
@@ -381,11 +402,11 @@ function forma(x){
 }
 function regione(z,B){ // spazio utile per disporre gli oggetti; per le tasche del coperchio in coordinate del coperchio
   const W=BAG.W;
-  if(z==="front")return{lid:true,x0:-21.5,x1:21.5,z0:W/2-13.5,z1:W/2+13.5,y0:1.1,y1:4.1,dir:1};
-  if(z==="zip")return{lid:true,x0:8.5,x1:21.5,z0:W/2-11.5,z1:W/2-1.5,y0:4.3,y1:5.3,dir:1};
-  if(z==="rete")return{lid:true,x0:-19.5,x1:19.5,z0:W/2-12.5,z1:W/2+12.5,y0:-.4,y1:-3,dir:-1};
+  if(z==="front")return{lid:true,x0:-21.5,x1:21.5,z0:W/2-13.5,z1:W/2+13.5,y0:1.7,y1:4.7,dir:1};
+  if(z==="zip")return{lid:true,x0:8.5,x1:21.5,z0:W/2-11.5,z1:W/2-1.5,y0:5,y1:6.3,dir:1};
+  if(z==="rete")return{lid:true,x0:-20,x1:20,z0:W/2-13,z1:W/2+13,y0:-.7,y1:-3.2,dir:-1};
   if(z==="pc")return{x0:-21,x1:21,z0:-14,z1:14,y0:-2.5,y1:-.4,dir:1};
-  if(z==="borr")return{x0:BAG.L/2+.4,x1:BAG.L/2+7.2,z0:-3.4,z1:3.4,y0:2,y1:16,dir:1};
+  if(z==="borr")return{x0:BAG.L/2+.4,x1:BAG.L/2+6.4,z0:BAG.W/2-12,z1:BAG.W/2-6,y0:2.2,y1:15,dir:1};
   const b=B[z];return{x0:b.min[0],x1:b.max[0],z0:b.min[2],z1:b.max[2],y0:b.min[1],y1:b.max[1],dir:1};
 }
 function rifai3D(){
@@ -401,29 +422,33 @@ function rifai3D(){
       e.position.set((reg.x0+reg.x1)/2,(reg.y0+reg.y1)/2,(reg.z0+reg.z1)/2);host.add(e)}
     const its=l.filter(x=>x.z===z&&x.v>0&&(mostraMancanti||S.t.fatti[x.id]));if(!its.length)continue;
     const cap=Math.abs(reg.y1-reg.y0);
-    let cx=reg.x0,cz=reg.z0,rowD=0,layer=0;const alt=[0];
+    let cx=reg.x0,cz=reg.z0,rowD=0,pieno=false;const slots=[];
     for(const x of its.slice().sort((a,c)=>c.v*c.n-a.v*a.n)){
       const f=forma(x);let fw=Math.min(FORME[f][0],reg.x1-reg.x0),fd=Math.min(FORME[f][1],reg.z1-reg.z0);
-      const dentro=!!S.t.fatti[x.id],col=COL_GR[x.gruppo]||0x888888;
-      const pile=f==="scarpe"?2*x.n:1;
+      const dentro=!!S.t.fatti[x.id],col=COL_GR[x.gruppo]||0x888888,vol=x.v*x.n*1000;
+      if(f==="piccolo"){const hMax=Math.min(6,cap);const area=Math.max(fw*fd,vol/hMax);fw=Math.min(reg.x1-reg.x0,Math.sqrt(area*1.4));fd=Math.min(reg.z1-reg.z0,area/fw)}
+      // i vestiti si dividono in più pile se una sola supererebbe l'altezza dello scomparto
+      const hUna=vol/(fw*fd),nVest=f==="vest"?Math.min(x.n,Math.max(1,Math.ceil(hUna/(cap*.9)))):1;
+      const pile=f==="scarpe"?2*x.n:nVest;
       for(let k=0;k<pile;k++){
-        const h=f==="scarpe"?Math.min(11,x.v*1000/(2*fw*fd)):x.v*x.n*1000/(fw*fd);
-        if(cx+fw>reg.x1+.01){cx=reg.x0;cz+=rowD;rowD=0}
-        if(cz+fd>reg.z1+.01){cz=reg.z0;cx=reg.x0;rowD=0;layer++;alt[layer]=alt[layer-1]}
-        const base=layer?alt[layer-1]:0;
+        const pezziPila=f==="vest"?Math.ceil(x.n/nVest)-(k<x.n%nVest||x.n%nVest===0?0:1):1;
+        const h=f==="scarpe"?Math.min(11,x.v*1000/(2*fw*fd)):f==="vest"?x.v*pezziPila*1000/(fw*fd):vol/(fw*fd);
+        if(!pieno){if(cx+fw>reg.x1+.01){cx=reg.x0;cz+=rowD;rowD=0}if(cz+fd>reg.z1+.01)pieno=true}
+        let base=0,px,pz,slot=null;
+        if(!pieno){px=cx+fw/2;pz=cz+fd/2}
+        else{slot=slots.reduce((a,b)=>b.top<a.top?b:a);px=slot.x;pz=slot.z;base=slot.top}
         const grp=new THREE.Group();
-        const strati=f==="vest"?Math.max(1,x.n):1,hs=h/strati;
+        const strati=f==="vest"?Math.max(1,pezziPila):1,hs=h/strati;
         for(let p=0;p<strati;p++){
           const c=new THREE.Color(col);if(strati>1)c.offsetHSL(0,0,p%2?.06:-.02);
           const m=mesh(rbox(fw*.95,Math.max(.3,hs*.9),fd*.95,f==="scarpe"?3:Math.min(1.1,hs*.45)),c,dentro?{}:{op:.2});
           m.position.y=hs*p+hs/2;m.userData.nome=`${x.nome} ×${x.n}${dentro?"":" (da mettere)"}`;
-          if(base+h>cap+.05)m.material.emissive=new THREE.Color(0x8a1a12);
+          if(base+h>cap+.05)m.material.emissive=new THREE.Color(0x40100c);
           grp.add(m);
         }
-        grp.position.set(cx+fw/2,reg.y0+reg.dir*base,cz+fd/2);grp.scale.y=reg.dir;
+        grp.position.set(px,reg.y0+reg.dir*base,pz);grp.scale.y=reg.dir;
         host.add(grp);
-        alt[layer]=Math.max(alt[layer],base+h);
-        cx+=fw;rowD=Math.max(rowD,fd);
+        if(slot)slot.top+=h;else{slots.push({x:px,z:pz,top:h});cx+=fw;rowD=Math.max(rowD,fd)}
       }
     }
   }
